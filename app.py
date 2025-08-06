@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from shapely import Point
 # Use a non-interactive backend, crucial for server-side execution
 matplotlib.use('Agg')
-
+os.environ['MPLCONFIGDIR'] = "/tmp/matplotlib"
 # ==============================================================================
 # --- STEP 2: IMPORT ALL OTHER LIBRARIES ---
 # ==============================================================================
@@ -735,3 +735,4 @@ def get_stream_layer():
 if __name__ == "__main__":
 
     app.run()
+

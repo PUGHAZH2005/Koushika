@@ -15,8 +15,8 @@ python-dotenv
 shapely
 mapbox-vector-tile
 matplotlib
-richdem
 pvlib
 pytz
 pysheds
 pyproj
+

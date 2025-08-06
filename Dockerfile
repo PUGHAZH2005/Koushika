@@ -1,0 +1,64 @@
+# Dockerfile
+
+# Stage 1: Build stage - Install system dependencies and Python packages
+# Use a specific, stable Debian-based Python image
+FROM python:3.11-slim-bookworm AS builder
+
+# Set an environment variable to prevent prompts during apt-get install
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install the essential system libraries for your geospatial packages
+# This is the equivalent of your build.sh script, but done correctly inside Docker
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gdal-bin \
+    libgdal-dev \
+    libpdal-dev \
+    pdal \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set a working directory
+WORKDIR /app
+
+# Create a virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy your requirements file and install Python packages into the venv
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+
+# Stage 2: Final stage - Create the lightweight production image
+# Use the same base image for a smaller final size
+FROM python:3.11-slim-bookworm
+
+# Set the same environment variable
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install only the RUNTIME system dependencies (not the -dev ones)
+# This makes the final container smaller and more secure
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gdal-bin \
+    libgdal30 \
+    libpdal-base13 \
+    pdal \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the virtual environment from the builder stage
+COPY --from=builder /opt/venv /opt/venv
+
+# Activate the virtual environment
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy your application code and data
+# IMPORTANT: Make sure your 'data' folder is in your repo
+COPY . .
+
+# Expose the port Gunicorn will run on
+EXPOSE 10000
+
+# Set the command to run your application using Gunicorn
+CMD ["gunicorn", "--config", "gunicorn_config.py", "app:app"]

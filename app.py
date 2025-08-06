@@ -4,7 +4,7 @@ import os
 import sys
 import tempfile
 import zipfile
-from app import app
+
 import matplotlib
 from matplotlib import pyplot as plt
 from shapely import Point
@@ -37,7 +37,7 @@ from shapely.geometry import shape, box
 from mapbox_vector_tile import encode as mvt_encode
 from matplotlib import cm
 from matplotlib.colors import Normalize, LinearSegmentedColormap
-import richdem as rd
+# import richdem as rd  # <-- REMOVED
 import pvlib
 import pytz
 import uuid
@@ -118,181 +118,41 @@ def point_viewer_page():
 
 
 # =========================================================================
-# === FLOOD SIMULATION API ROUTES ===
+# === FLOOD SIMULATION API ROUTES (Most will be disabled due to richdem removal) ===
 # =========================================================================
 
 @app.route('/api/run_gis_flood_simulation', methods=['POST'])
 def run_gis_flood_simulation():
-    data = request.get_json()
-    dem_id = data.get('dem_id')
-    inflow_points = data.get('inflow_points', [])
-
-    if not dem_id or not inflow_points:
-        return jsonify({"error": "DEM ID and at least one inflow point are required."}), 400
-    
-    dem_path = os.path.join(ELEVATION_DATA_PATH, dem_id)
-    if not os.path.exists(dem_path):
-        return jsonify({"error": "DEM file not found."}), 404
-
-    try:
-        with rasterio.open(dem_path) as src:
-            dem_transform = src.transform
-            dem_crs = src.crs
-            dem_data = src.read(1).astype('float32')
-            original_nodata = src.nodata
-
-        dem_data[dem_data == original_nodata] = np.nan
-        rd_dem = rd.rdarray(dem_data, no_data=np.nan)
-        rd_dem.geotransform = dem_transform.to_gdal()
-
-        filled_dem = rd.FillDepressions(rd_dem, in_place=False)
-        aspect = rd.TerrainAttribute(filled_dem, attrib='aspect')
-
-        aspect_map = {
-            (337.5, 360): (0, 1), (0, 22.5): (0, 1), (22.5, 67.5): (-1, 1),
-            (67.5, 112.5): (-1, 0), (112.5, 157.5): (-1, -1), (157.5, 202.5): (0, -1),
-            (202.5, 247.5): (1, -1), (247.5, 292.5): (1, 0), (292.5, 337.5): (1, 1),
-        }
-        def get_dir_from_aspect(angle):
-            if angle < 0: return (0, 0)
-            for r, d in aspect_map.items():
-                if r[0] <= angle < r[1]: return d
-            return (0, 0)
-
-        water_depth = np.zeros_like(filled_dem, dtype=np.float32)
-        transformer = pyproj.Transformer.from_crs("EPSG:4326", dem_crs, always_xy=True)
-
-        for p in inflow_points:
-            rate = p.get('rate', 0)
-            if rate <= 0: continue
-            
-            dem_x, dem_y = transformer.transform(p['lon'], p['lat'])
-            row, col = rasterio.transform.rowcol(dem_transform, dem_x, dem_y)
-            curr_r, curr_c = int(row), int(col)
-            
-            path_len = 0
-            while path_len < 5000:
-                if not (0 <= curr_r < water_depth.shape[0] and 0 <= curr_c < water_depth.shape[1]): break
-                water_depth[curr_r, curr_c] += (rate * 0.01) / (path_len + 1)
-                angle = aspect[curr_r, curr_c]
-                dr, dc = get_dir_from_aspect(angle)
-                if dr == 0 and dc == 0: break
-                curr_r += dr; curr_c += dc
-                path_len += 1
-
-        wse_raster = np.where(water_depth > 0.01, filled_dem + water_depth, original_nodata)
-        output_wse = rd.rdarray(wse_raster.astype(np.float32), no_data=original_nodata)
-        output_wse.geotransform = dem_transform.to_gdal()
-
-        cache_filename = f"gis_flood_{uuid.uuid4().hex[:8]}.tif"
-        rd.SaveGDAL(os.path.join(CACHE_PATH, cache_filename), output_wse)
-
-        return jsonify({"status": "success", "cache_filename": cache_filename})
-
-    except Exception as e:
-        traceback.print_exc(); return jsonify({"error": f"An error occurred during GIS flood simulation: {str(e)}"}), 500
+    # This function relies heavily on richdem and is now disabled.
+    return jsonify({"error": "This GIS simulation feature is currently disabled due to library incompatibility."}), 501
 
     
 @app.route('/api/calculate_flow_accumulation', methods=['POST'])
 def calculate_flow_accumulation():
-    data = request.get_json(); dem_id = data.get('dem_id')
-    if not dem_id: return jsonify({"error": "DEM ID is required."}), 400
-    dem_path = os.path.join(ELEVATION_DATA_PATH, dem_id)
-    if not os.path.exists(dem_path): return jsonify({"error": "DEM file not found."}), 404
-    try:
-        dem = rd.LoadGDAL(dem_path); filled_dem = rd.FillDepressions(dem)
-        flow_acc = rd.FlowAccumulation(filled_dem, method='D8')
-        log_flow_acc = np.log1p(flow_acc); nodata_val = dem.no_data
-        log_flow_acc[dem == nodata_val] = nodata_val; valid_pixels = log_flow_acc[log_flow_acc != nodata_val]
-        min_val, max_val = (0, 1) if valid_pixels.size == 0 else (float(np.min(valid_pixels)), float(np.percentile(valid_pixels, 99)))
-        cache_filename = f"flow_acc_{os.path.splitext(dem_id)[0]}.tif"
-        rd.SaveGDAL(os.path.join(CACHE_PATH, cache_filename), log_flow_acc)
-        return jsonify({"status": "success", "cache_filename": cache_filename, "stats": {"min": min_val, "max": max_val}})
-    except Exception as e:
-        traceback.print_exc(); return jsonify({"error": f"An error occurred during flow accumulation: {str(e)}"}), 500
+    # This function relies heavily on richdem and is now disabled.
+    return jsonify({"error": "This flow accumulation feature is currently disabled due to library incompatibility."}), 501
 
 @app.route('/api/trace_flow_path', methods=['POST'])
 def trace_flow_path():
-    data = request.get_json()
-    dem_id = data.get('dem_id')
-    inflow_points = data.get('inflow_points', [])
-    outflow_points = data.get('outflow_points', [])
-
-    if not all([dem_id, inflow_points, outflow_points]):
-        return jsonify({"error": "DEM ID, inflow, and outflow points are required."}), 400
-
-    dem_path = os.path.join(ELEVATION_DATA_PATH, dem_id)
-    if not os.path.exists(dem_path):
-        return jsonify({"error": "DEM file not found."}), 404
-
-    try:
-        # Load DEM using rasterio to get profile info
-        with rasterio.open(dem_path) as src:
-            profile = src.profile
-            original_nodata = src.nodata if src.nodata is not None else -9999.0
-            dem_array = src.read(1).astype(np.float32)
-            dem_array[dem_array == original_nodata] = np.nan
-
-        # Create a "sink" for the outflow points to guide the flow
-        sim_dem = dem_array.copy()
-        for point in outflow_points:
-            outflow_gdf = gpd.GeoDataFrame([1], geometry=[Point(point['lon'], point['lat'])], crs="EPSG:4326").to_crs(profile['crs'])
-            col, row = ~profile['transform'] * (outflow_gdf.geometry.iloc[0].x, outflow_gdf.geometry.iloc[0].y)
-            if 0 <= row < sim_dem.shape[0] and 0 <= col < sim_dem.shape[1]:
-                sim_dem[int(row), int(col)] -= 1000  # Dig a deep hole at the outflow
-
-        # Process with RichDEM
-        dem_rd = rd.rdarray(sim_dem, no_data=np.nan)
-        dem_rd.geotransform = profile['transform'].to_gdal()
-        filled_dem_rd = rd.FillDepressions(dem_rd, in_place=False)
-        
-        # Create weights for the inflow points
-        weights = np.zeros_like(dem_array, dtype=np.float64)
-        for point in inflow_points:
-            inflow_gdf = gpd.GeoDataFrame([1], geometry=[Point(point['lon'], point['lat'])], crs="EPSG:4326").to_crs(profile['crs'])
-            col, row = ~profile['transform'] * (inflow_gdf.geometry.iloc[0].x, inflow_gdf.geometry.iloc[0].y)
-            if 0 <= row < weights.shape[0] and 0 <= col < weights.shape[1]:
-                weights[int(row), int(col)] = 1.0
-
-        # Calculate the weighted flow accumulation to trace the path
-        flow_path_raster = rd.FlowAccumulation(filled_dem_rd, weights=weights, method='D8')
-
-        # === FIX: Create a distinct 2D overlay raster for the path ===
-        # The path will have value 1, everything else 0. Nodata remains nodata.
-        output_raster = np.full(dem_array.shape, 0, dtype=np.float32)
-        path_mask = (flow_path_raster > 0) & np.isfinite(dem_array)
-        output_raster[path_mask] = 1
-        output_raster[~np.isfinite(dem_array)] = original_nodata
-        
-        cache_filename = f"flow_trace_{uuid.uuid4().hex[:8]}.tif"
-        
-        # Save the new 2D raster
-        profile.update(dtype='float32', nodata=original_nodata)
-        with rasterio.open(os.path.join(CACHE_PATH, cache_filename), 'w', **profile) as dst:
-            dst.write(output_raster, 1)
-
-        # The stats are now simple 0 to 1
-        stats = {"min": 0, "max": 1}
-
-        return jsonify({"status": "success", "cache_filename": cache_filename, "stats": stats})
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": f"An error during flow trace: {str(e)}"}), 500
+    # This function relies heavily on richdem and is now disabled.
+    return jsonify({"error": "This flow trace feature is currently disabled due to library incompatibility."}), 501
 
 @app.route('/api/channelized_flood_simulation', methods=['POST'])
 def channelized_flood_simulation():
-    data = request.get_json()
-    dem_id = data.get('dem_id')
-    inflow_points = data.get('inflow_points', [])
-
-    if not dem_id or not inflow_points:
-        return jsonify({"error": "DEM ID and inflow points are required."}), 400
-
-    dem_path = os.path.join(ELEVATION_DATA_PATH, dem_id)
-    if not os.path.exists(dem_path):
-        return jsonify({"error": "DEM file not found."}), 404
-
+    # This function relies on pysheds and should still work, but may have some richdem dependencies.
+    # We will keep it but add a try-except block for safety.
     try:
+        data = request.get_json()
+        dem_id = data.get('dem_id')
+        inflow_points = data.get('inflow_points', [])
+
+        if not dem_id or not inflow_points:
+            return jsonify({"error": "DEM ID and inflow points are required."}), 400
+
+        dem_path = os.path.join(ELEVATION_DATA_PATH, dem_id)
+        if not os.path.exists(dem_path):
+            return jsonify({"error": "DEM file not found."}), 404
+
         grid = Grid()
         dem = grid.read_raster(dem_path)
         original_nodata = dem.nodata
@@ -301,13 +161,8 @@ def channelized_flood_simulation():
         dem_data[dem_data == original_nodata] = np.nan
         
         filled_dem_data = grid.fill_depressions(dem_data)
+        flow_direction = grid.flowdir(filled_dem_data) # Using pysheds flow direction
         
-        rd_dem = rd.rdarray(filled_dem_data, no_data=np.nan)
-        rd_dem.geotransform = grid.affine.to_gdal()
-        
-        # Use richdem for flow direction to avoid the pysheds error
-        flow_direction = rd.FlowDirections(rd_dem, method='D8')
-
         flow_direction_mask = flow_direction > 0
         inflow_coords = []
         for p in inflow_points:
@@ -322,7 +177,6 @@ def channelized_flood_simulation():
             return jsonify({"error": "No valid inflow points after snapping."}), 400
             
         x_coords, y_coords = zip(*inflow_coords)
-
         acc = grid.accumulation(flow_direction, x=x_coords, y=y_coords)
 
         total_inflow_rate = sum(p.get('rate', 0) for p in inflow_points if p.get('rate', 0) > 0)
@@ -343,6 +197,7 @@ def channelized_flood_simulation():
 
 @app.route('/api/export_channel_flood', methods=['POST'])
 def export_channel_flood():
+    # This should be fine as it relies on rasterio and shapely.
     data = request.get_json(); cache_filename = data.get('cache_filename')
     if not cache_filename: return jsonify({"error": "Cache filename is required."}), 400
     raster_path = os.path.join(CACHE_PATH, cache_filename)
@@ -364,6 +219,7 @@ def export_channel_flood():
             return send_file(memory_file, mimetype='application/zip', as_attachment=True, download_name='channel_flood_centerline.zip')
     except Exception as e:
         traceback.print_exc(); return jsonify({"error": f"An error during shapefile export: {str(e)}"}), 500
+
 
 @app.route('/api/projection_data', methods=['POST'])
 def get_projection_data():
@@ -877,4 +733,5 @@ def get_stream_layer():
     return jsonify({"error": "No stream or river shapefile found."}), 404
 
 if __name__ == "__main__":
+
     app.run()

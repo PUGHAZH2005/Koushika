@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: your-app-name # Make sure this is still your app's name
+    env: python
+    # Build commands for a stable geospatial stack on Render
+    buildCommand: |
+      apt-get update && apt-get install -y --no-install-recommends \
+        libgdal-dev \
+        gdal-bin \
+        python3-gdal
+      pip install -r requirements.txt
+    # The command to start your application
+    startCommand: "gunicorn --workers 4 --bind 0.0.0.0:$PORT wsgi:app"
+    # Define environment variables
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11

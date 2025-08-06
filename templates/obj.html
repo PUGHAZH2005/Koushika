@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Advanced Model Inspector</title>
+    <style>
+        :root {
+            --primary-color: #007aff;
+            --danger-color: #dc3545;
+            --panel-bg: rgba(40, 42, 45, 0.85);
+            --text-color: #dcdcdc;
+            --text-secondary: #a0a0a0;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --snap-midpoint: #00aeff; /* Blue for Midpoint */
+            --snap-vertex: #34c759;   /* Green for Vertex */
+        }
+        body { 
+            margin: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #1e1e1e; 
+            color: var(--text-color);
+            overflow: hidden;
+        }
+        #canvas-container { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            cursor: grab; 
+        }
+        #canvas-container:active { cursor: grabbing; }
+        #canvas-container.measuring { cursor: crosshair; }
+        .controls-ui {
+            position: fixed;
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        #controls-panel {
+            top: 15px;
+            right: 15px;
+            width: 320px;
+            transition: transform 0.3s ease-in-out, height 0.3s ease-in-out;
+            transform-origin: top right;
+            overflow: hidden;
+        }
+        #controls-panel.collapsed {
+            transform: scale(0);
+            height: 0;
+        }
+        #panel-content { padding: 20px; max-height: calc(100vh - 90px); overflow-y: auto; }
+        #panel-toggle-btn {
+            top: 15px;
+            right: 15px;
+            width: 44px;
+            height: 44px;
+            color: var(--text-color);
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s ease, background-color 0.2s ease;
+            z-index: 1001;
+        }
+        #panel-toggle-btn:hover { background-color: rgba(60, 62, 65, 0.9); }
+        #panel-toggle-btn.open { transform: rotate(90deg); }
+        h3 { 
+            margin-top: 0; 
+            margin-bottom: 15px;
+            border-bottom: 1px solid #4a4a4a; 
+            padding-bottom: 10px; 
+            font-size: 1.2em;
+            font-weight: 500;
+            color: #ffffff;
+        }
+        .control-group { margin-bottom: 25px; }
+        label { 
+            display: block; 
+            margin-bottom: 8px; 
+            font-size: 0.9em; 
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            background: #4a4a4a;
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--primary-color);
+            border-radius: 50%;
+            border: 2px solid #ffffff;
+            cursor: pointer;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: var(--primary-color);
+            border-radius: 50%;
+            border: 2px solid #ffffff;
+            cursor: pointer;
+        }
+        .pro-button {
+            width: 100%;
+            padding: 10px 15px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 500;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+        }
+        .pro-button:hover { background-color: #0056b3; }
+        .pro-button:active { transform: scale(0.98); }
+        #bottom-toolbar {
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px;
+            display: flex;
+            gap: 8px;
+        }
+        .tool-icon {
+            width: 44px;
+            height: 44px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .tool-icon:hover { background-color: rgba(255,255,255,0.1); color: #fff; }
+        .tool-icon.active { background-color: var(--primary-color); color: #fff; }
+        .results-box {
+            margin-top: 15px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            font-family: "SF Mono", "Fira Code", monospace;
+            font-size: 0.9em;
+            color: #dcdcdc;
+            border: 1px solid #4a4a4a;
+        }
+        .results-box h4 {
+            margin: 0 0 10px 0;
+            font-size: 1em;
+            color: #fff;
+            border-bottom: 1px solid #555;
+            padding-bottom: 5px;
+        }
+        .results-box p { margin: 0 0 5px 0; }
+        .dim-label { color: var(--text-secondary); }
+        #loading-indicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 8px;
+            font-size: 1.2em;
+            z-index: 1000;
+            display: none;
+        }
+        .measurement-label {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            white-space: nowrap;
+        }
+    </style>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    
+    <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/" } }</script>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <div id="loading-indicator"><i class="fas fa-spinner fa-spin"></i> Loading Model...</div>
+    <button id="panel-toggle-btn" class="controls-ui"><i class="fas fa-cog"></i></button>
+    <div id="controls-panel" class="controls-ui collapsed">
+        <div id="panel-content">
+            <div class="control-group">
+                <h3>Display Options</h3>
+                <button id="toggle-texture-btn" class="pro-button">Hide Textures</button>
+            </div>
+            <div class="control-group">
+                <h3>Overall Dimensions</h3>
+                <div id="overall-dimensions-box" class="results-box">
+                    <p><span class="dim-label">Length (X):</span> -</p>
+                    <p><span class="dim-label">Height (Y):</span> -</p>
+                    <p><span class="dim-label">Width (Z):</span> -</p>
+                </div>
+            </div>
+            <div class="control-group">
+                <h3>Cross-Section</h3>
+                <label for="clip-x">X-Axis (Red)</label>
+                <input type="range" id="clip-x" min="-1" max="1" step="0.01" value="1">
+                <label for="clip-y" style="margin-top:15px;">Y-Axis (Green)</label>
+                <input type="range" id="clip-y" min="-1" max="1" step="0.01" value="1">
+                <label for="clip-z" style="margin-top:15px;">Z-Axis (Blue)</label>
+                <input type="range" id="clip-z" min="-1" max="1" step="0.01" value="1">
+            </div>
+        </div>
+    </div>
+    <div id="bottom-toolbar" class="controls-ui">
+        <button id="measure-tool-btn" class="tool-icon" title="Measure Distance"><i class="fas fa-ruler"></i></button>
+        <button id="clear-measurements-btn" class="tool-icon" title="Clear All Measurements"><i class="fas fa-trash"></i></button>
+    </div>
+
+    <script type="module" src="{{ url_for('static', filename='js/obj-viewer.js') }}"></script>
+    <script>
+        window.MODEL_DATA = {
+            id: "{{ model_id }}",
+            objPath: "{{ model_obj_path }}",
+            mtlPath: "{{ model_mtl_path }}"
+        };
+    </script>
+</body>
+</html>

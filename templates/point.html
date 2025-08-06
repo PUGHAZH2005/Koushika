@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>3D Point Cloud Inspector</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" />
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+        }
+    }
+    </script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: #1c1c1e; color: #f5f5f7; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: default; }
+        #canvas-container.crosshair-cursor { cursor: crosshair; }
+        
+        /* Main Toolbar */
+        #top-left-toolbar { position: absolute; top: 15px; left: 15px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
+
+        /* Inspector Panel (Now a Popup) */
+        #controls-panel {
+            position: absolute; top: 15px; right: 15px; width: 320px;
+            background-color: rgba(44, 44, 46, 0.9); backdrop-filter: blur(10px);
+            color: #f5f5f7; padding: 0; border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.4); z-index: 1000;
+            transform: translateX(110%);
+            transition: transform 0.3s ease-in-out;
+            visibility: hidden;
+            max-height: calc(100vh - 30px);
+            display: flex;
+            flex-direction: column;
+        }
+        #controls-panel.visible { transform: translateX(0); visibility: visible; }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid #444; }
+        .panel-header h2 { margin: 0; font-size: 1.2em; }
+        .close-btn { background: none; border: none; color: #aaa; font-size: 24px; cursor: pointer; line-height: 1; padding: 0; }
+        .panel-content { padding: 20px; display: flex; flex-direction: column; gap: 25px; overflow-y: auto;}
+        .control-group h3 { margin: 0 0 15px 0; color: white; padding-bottom: 10px; font-size: 1.1em; border-bottom: 1px solid #444; }
+        
+        .styled-select, input[type="range"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #555; background-color: #3a3a3c; color: #f5f5f7; font-size: 1em; box-sizing: border-box; }
+        input[type="range"] { padding: 0; }
+        .styled-button, .tool-button-3d {
+            width: 100%; padding: 10px; font-size: 1em; font-weight: bold; color: white;
+            background-color: #0a84ff; border: none; border-radius: 8px; cursor: pointer;
+            transition: background-color 0.2s, opacity 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .tool-button-3d { margin-bottom: 10px; }
+        .tool-button-3d.active { background-color: #34c759; }
+        .styled-button:disabled, .tool-button-3d:disabled { background-color: #555; cursor: not-allowed; opacity: 0.6; }
+        .styled-button:hover:not(:disabled) { background-color: #0056b3; }
+        
+        #info-panel { position: absolute; bottom: 15px; left: 15px; background-color: rgba(44, 44, 46, 0.9); padding: 10px 15px; border-radius: 8px; font-size: 0.9em; z-index: 500; }
+        #measurement-info, #hint-panel { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); background-color: rgba(44, 44, 46, 0.8); padding: 8px 15px; border-radius: 8px; font-size: 0.85em; color: #ccc; pointer-events: none; z-index: 500; }
+        
+        .popup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1001; display: none; align-items: center; justify-content: center; }
+        .popup-overlay.visible { display: flex; }
+        .popup-content { background: #2c2c2e; padding: 25px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); min-width: 300px; }
+        .popup-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        .popup-header h3 { margin: 0; }
+        .close-popup-btn { background: none; border: none; color: #aaa; font-size: 24px; cursor: pointer; }
+        
+        #profile-popup.popup-overlay { align-items: flex-end; padding-bottom: 20px; }
+        #profile-popup .popup-content {
+            width: 80vw; max-width: 1400px; height: 40vh;
+            display: flex; flex-direction: column; background-color: #f0f2f5; color: #333;
+        }
+        #profile-popup .popup-header { border-bottom-color: #ddd; }
+        #profile-popup .close-popup-btn { color: #555; }
+        #profile-stats {
+            display: flex; justify-content: space-around; flex-wrap: wrap;
+            padding: 10px 0; margin-bottom: 15px;
+            font-size: 0.9em; background-color: #e9ecef; border-radius: 6px;
+        }
+        #profile-stats span { padding: 5px 10px; }
+        #profile-stats span strong { color: #007aff; }
+        #profile-chart-wrapper { flex-grow: 1; position: relative; }
+        #profile-chart { width: 100%; height: 100%; }
+
+        .classification-filter {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 10px;
+            background: #3a3a3c;
+            border-radius: 6px;
+            border: 1px solid #555;
+        }
+        .classification-filter label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .classification-filter input {
+            margin-right: 10px;
+            accent-color: #0a84ff;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <div id="top-left-toolbar">
+        <a href="{{ url_for('viewer') }}" class="tool-button" title="Back to Main Viewer"><i class="fas fa-home"></i></a>
+        <button id="inspector-tool-btn" class="tool-button" title="Point Cloud Inspector"><i class="fas fa-search"></i></button>
+    </div>
+    
+    <div id="controls-panel">
+        <div class="panel-header">
+            <h2>Point Cloud Inspector</h2>
+            <button id="close-inspector-btn" class="close-btn">×</button>
+        </div>
+        <div class="panel-content">
+            <div class="control-group">
+                <label for="pc-select">Select Point Cloud</label>
+                <select id="pc-select" class="styled-select">
+                    <option value="">-- Loading Layers --</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <h3>Display</h3>
+                <label for="colorize-select">Colorize By</label>
+                <select id="colorize-select" class="styled-select" disabled></select>
+                <label for="point-size-slider" style="margin-top: 15px;">Point Size: <span id="point-size-value">1.0</span></label>
+                <input type="range" id="point-size-slider" min="0.1" max="5" step="0.1" value="1.0" disabled>
+            </div>
+            
+            <div class="control-group" id="classification-group" style="display: none;">
+                <h3>Classification Filter</h3>
+                <div id="classification-filter-container" class="classification-filter">
+                    <!-- Checkboxes will be populated here -->
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Tools</h3>
+                <button id="measure-tool-btn" class="tool-button-3d" disabled><i class="fas fa-ruler"></i> Measure</button>
+                <button id="profile-tool-btn" class="tool-button-3d" disabled><i class="fas fa-chart-line"></i> Profile</button>
+                <button id="clear-tools-btn" class="styled-button" disabled style="background-color: #e56302;">Clear Markings</button>
+            </div>
+            <div class="control-group">
+                <h3>View</h3>
+                 <button id="reset-view-btn" class="styled-button" disabled>Reset View</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="hint-panel" style="display: none;"></div>
+    <div id="info-panel" style="display: none;"></div>
+    <div id="measurement-info" style="display: none;"></div>
+    
+    <div id="profile-popup" class="popup-overlay">
+        <div class="popup-content">
+            <div class="popup-header">
+                <h3>Elevation Profile</h3>
+                <button class="close-popup-btn">×</button>
+            </div>
+            <div id="profile-stats"></div>
+            <div id="profile-chart-wrapper">
+                <canvas id="profile-chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span id="loader-text">Loading...</span>
+        </div>
+    </div>
+
+    <script type="module" src="{{ url_for('static', filename='js/point.js') }}"></script>
+</body>
+</html>

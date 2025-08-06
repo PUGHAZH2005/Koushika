@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Unified Geo-Viewer</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="{{ url_for('static', filename='libs/maplibre-gl.js') }}"></script>
+    <link href="{{ url_for('static', filename='libs/maplibre-gl.css') }}" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" />
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/2.0.2/css/dataTables.dataTables.css" />
+    <script src="https://cdn.datatables.net/2.0.2/js/dataTables.js"></script>
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+        }
+    }
+    </script>
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet" />
+</head>
+<body>
+    
+    <div id="top-header">
+        <div class="logo-container">
+             <img src="/static/logo_bg.png" alt="Logo" height="100">
+        </div>
+        <div class="header-controls">
+        </div>
+    </div>
+
+    <div id="left-sidebar">
+        <button id="layers-tool" class="tool-button" title="Manage Layers"><i class="fas fa-layer-group"></i></button>
+        <button id="attributes-tool" class="tool-button" title="View Attributes"><i class="fas fa-table"></i></button>
+        <button id="measure-tool" class="tool-button" title="Measure Distance"><i class="fas fa-ruler"></i></button>
+        <button id="profile-tool" class="tool-button" title="Elevation Profile"><i class="fas fa-chart-line"></i></button>
+        <button id="hazard-tool-btn" class="tool-button" title="Analysis Tools"><i class="fas fa-person-digging"></i></button>
+        <button id="download-pdf-btn" class="tool-button" title="Download as PDF"><i class="fas fa-file-pdf"></i></button>
+
+        <div class="sidebar-divider"></div>
+        <a href="/point_viewer" class="tool-button" title="Point Cloud Viewer" target="_blank"><i class="fas fa-cubes"></i></a>
+        <a href="/solar_dashboard" class="tool-button" title="Solar Dashboard" target="_blank"><i class="fas fa-solar-panel"></i></a>
+        <a href="/flood_simulation" class="tool-button" title="Flood Simulation Viewer" target="_blank"><i class="fas fa-water"></i></a>
+        
+        <!-- ADDED: Right-aligned tool section -->
+        <div class="sidebar-right-tools">
+            <button id="view-options-tool" class="tool-button" title="View Options"><i class="fas fa-sliders-h"></i></button>
+        </div>
+    </div>
+
+    <div id="map-container">
+        <div id="map"></div>
+        <div id="legend-container" style="display: none"><div id="legend-content"></div></div>
+        <div id="info-panels">
+            <div id="measure-info" style="display: none"></div>
+            <div id="elevation-info">Elevation: N/A</div>
+        </div>
+        <div id="profile-container" class="map-overlay">
+            <button id="close-profile-btn" class="close-button">×</button>
+            <div id="profile-stats"></div>
+            <div id="profile-chart-wrapper"><canvas id="profile-chart"></canvas></div>
+        </div>
+        
+        <!-- REVISED: Attribute Panel Header for compact layout -->
+        <div id="attribute-panel">
+            <div class="panel-header compact">
+                <h3>Attribute Tables</h3>
+                <div class="attribute-controls">
+                    <label>Show <select id="attribute-entries-select"><option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="-1">All</option></select></label>
+                    <label>Search: <input type="search" id="attribute-global-search"></label>
+                </div>
+                <button id="close-attribute-panel-btn" class="close-btn">×</button> 
+            </div>
+            <div id="attribute-tables-container"></div>
+        </div>
+    </div>
+
+    <div id="layers-panel" class="side-panel">
+        <div class="panel-header">
+            <span>Layers</span>
+            <button id="close-layers-panel-btn" class="close-btn">×</button>
+        </div>
+        <div class="panel-content">
+            <div id="dem-layer-list" class="layer-group"><h4>Base Terrain (DEM)</h4></div>
+            <div id="vector-layer-list" class="layer-group"><h4>Vector Overlays</h4></div>
+            <div id="raster-layer-list" class="layer-group"><h4>Raster Overlays</h4></div>
+            <div id="model-importer-group" class="layer-group">
+                <h4>Import 3D Model</h4>
+                <div class="analysis-input-group" style="font-size: 0.9em;">
+                    <div>
+                        <label for="obj-file-input">Model Geometry (*.obj): <span style="color:red;">*Required</span></label>
+                        <input type="file" id="obj-file-input" required accept=".obj">
+                    </div>
+                    <div>
+                        <label for="mtl-file-input">Material File (*.mtl): <span style="color:#aaa;">Optional</span></label>
+                        <input type="file" id="mtl-file-input" accept=".mtl">
+                    </div>
+                </div>
+                <div class="analysis-button-group">
+                    <button id="import-obj-btn" class="analysis-button primary">Import Model</button>
+                </div>
+            </div>
+            <div id="imported-model-list" class="layer-group">
+                <h4>Imported Models</h4>
+                <i id="imported-models-placeholder">No models imported yet.</i>
+            </div>
+        </div>
+    </div>
+    
+    <!-- REVISED: View Options Panel now has the 'right' class -->
+    <div id="view-options-panel" class="side-panel right">
+        <div class="panel-header">
+            <span>View Options</span>
+            <button id="close-view-options-panel-btn" class="close-btn">×</button>
+        </div>
+        <div class="panel-content">
+            <div id="basemap-switcher-group" class="layer-group">
+                <h4>Basemap Style</h4>
+                <div class="basemap-option"><label><input type="radio" name="basemap" value="satellite" checked> Satellite</label></div>
+                <div class="basemap-option"><label><input type="radio" name="basemap" value="topo"> Topographic</label></div>
+                <div class="basemap-option"><label><input type="radio" name="basemap" value="streets"> Streets</label></div>
+            </div>
+            <div id="label-control-group" class="layer-group">
+                <h4>Label Control</h4>
+                <div class="analysis-input-group">
+                    <label for="label-layer-select">Layer to Label:</label>
+                    <select id="label-layer-select" disabled></select>
+                </div>
+                <div class="analysis-input-group">
+                    <label for="label-field-select">Label Using Field:</label>
+                    <select id="label-field-select" disabled></select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="hazard-panel" class="side-panel">
+        <div class="panel-header">
+            <span>Analysis Tools</span>
+            <button id="close-hazard-panel-btn" class="close-btn">×</button>
+        </div>
+        <div class="panel-content">
+            <div id="hazard-analysis-group" class="layer-group">
+                <h4>Terrain Derivatives & Hazard</h4>
+                <div class="analysis-input-group">
+                    <label for="hazard-rainfall-input">Rainfall for Hazard (mm):</label>
+                    <input id="hazard-rainfall-input" type="number" value="50" min="0" step="10">
+                </div>
+                <div class="analysis-button-group">
+                    <button id="calculate-slope-btn" class="analysis-button">Calculate Slope</button>
+                    <button id="calculate-aspect-btn" class="analysis-button">Calculate Aspect</button>
+                    <button id="analyze-landslide-btn" class="analysis-button primary">Analyze Landslide Hazard</button>
+                </div>
+            </div>
+            <div id="analysis-layer-list" class="layer-group">
+                <h4>Generated Layers</h4>
+                <i id="analysis-layers-placeholder">No analysis layers yet. Use the tools to create some.</i>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay" style="display: none">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span id="loader-text">Loading...</span>
+        </div>
+    </div>
+
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" integrity="sha512-2/YdOMV+YNpanLCF5MdQwaoFRVbTmrJ4u4EpqS/USXAQNUDgI5uwYi6J98WVtJKcfe1AbgerygzDFToxAlOGEQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+   <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

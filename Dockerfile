@@ -8,12 +8,10 @@ FROM python:3.11-slim-bookworm AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install the essential system libraries for your geospatial packages
-# --- REVISED: Using correct package names for Debian Bookworm ---
+# NOTE: PDAL is removed as it is not available in the default Debian repo
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin \
     libgdal-dev \
-    libpdal-dev \
-    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Set a working directory
@@ -24,7 +22,6 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy your requirements file and install Python packages into the venv
-# Pinning rasterio to a version known to work well with this GDAL version
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -37,11 +34,10 @@ FROM python:3.11-slim-bookworm
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install only the RUNTIME system dependencies (not the -dev ones)
-# --- REVISED: Using correct package names for Debian Bookworm ---
+# NOTE: PDAL is removed
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin \
     libgdal34 \
-    libpdal13 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory

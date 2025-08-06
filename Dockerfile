@@ -8,12 +8,12 @@ FROM python:3.11-slim-bookworm AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install the essential system libraries for your geospatial packages
-# This is the equivalent of your build.sh script, but done correctly inside Docker
+# --- REVISED: Using correct package names for Debian Bookworm ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin \
     libgdal-dev \
     libpdal-dev \
-    pdal \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Set a working directory
@@ -24,6 +24,7 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy your requirements file and install Python packages into the venv
+# Pinning rasterio to a version known to work well with this GDAL version
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -36,12 +37,11 @@ FROM python:3.11-slim-bookworm
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install only the RUNTIME system dependencies (not the -dev ones)
-# This makes the final container smaller and more secure
+# --- REVISED: Using correct package names for Debian Bookworm ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin \
-    libgdal30 \
-    libpdal-base13 \
-    pdal \
+    libgdal34 \
+    libpdal13 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
@@ -54,7 +54,6 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy your application code and data
-# IMPORTANT: Make sure your 'data' folder is in your repo
 COPY . .
 
 # Expose the port Gunicorn will run on

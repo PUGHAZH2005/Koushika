@@ -1,14 +1,14 @@
 # Dockerfile
 
 # Stage 1: Build stage - Install system dependencies and Python packages
-# Use a specific, stable Debian-based Python image
 FROM python:3.11-slim-bookworm AS builder
 
-# Set an environment variable to prevent prompts during apt-get install
+# Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
+# --- FIX: Prevent Matplotlib from creating a persistent font cache ---
+ENV MPLCONFIGDIR=/tmp/matplotlib
 
-# Install the essential system libraries AND BUILD TOOLS for your geospatial packages
-# --- FIX: Added 'build-essential' to provide g++ and other compilers ---
+# Install build tools and essential system libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gdal-bin \
@@ -22,19 +22,19 @@ WORKDIR /app
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy your requirements file and install Python packages into the venv
+# Copy your requirements file and install Python packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 
 # Stage 2: Final stage - Create the lightweight production image
-# Use the same base image for a smaller final size
 FROM python:3.11-slim-bookworm
 
-# Set the same environment variable
+# Set the same environment variables for the final image
 ENV DEBIAN_FRONTEND=noninteractive
+ENV MPLCONFIGDIR=/tmp/matplotlib
 
-# Install only the RUNTIME system dependencies (not the build tools or -dev ones)
+# Install only the RUNTIME system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin \
     libgdal32 \

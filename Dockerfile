@@ -7,9 +7,10 @@ FROM python:3.11-slim-bookworm AS builder
 # Set an environment variable to prevent prompts during apt-get install
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install the essential system libraries for your geospatial packages
-# NOTE: PDAL is removed as it is not available in the default Debian repo
+# Install the essential system libraries AND BUILD TOOLS for your geospatial packages
+# --- FIX: Added 'build-essential' to provide g++ and other compilers ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     gdal-bin \
     libgdal-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -33,8 +34,7 @@ FROM python:3.11-slim-bookworm
 # Set the same environment variable
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install only the RUNTIME system dependencies (not the -dev ones)
-# --- FIX: Corrected libgdal34 to libgdal32 ---
+# Install only the RUNTIME system dependencies (not the build tools or -dev ones)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin \
     libgdal32 \

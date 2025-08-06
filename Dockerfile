@@ -34,10 +34,10 @@ FROM python:3.11-slim-bookworm
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install only the RUNTIME system dependencies (not the -dev ones)
-# NOTE: PDAL is removed
+# --- FIX: Corrected libgdal34 to libgdal32 ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin \
-    libgdal34 \
+    libgdal32 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory

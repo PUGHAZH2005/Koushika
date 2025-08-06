@@ -20,4 +20,3 @@ pvlib
 pytz
 pysheds
 pyproj
-pdal
